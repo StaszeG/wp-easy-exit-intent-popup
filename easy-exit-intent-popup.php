@@ -24,10 +24,10 @@ function wp_exit_intent_popup_settings_page() {
   ?>
   <div class="wrap">
       <h1>Exit Intent Popup Settings</h1>
-      <form method="post" action="options.php" enctype="multipart/form-data">
+      <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+          <input type="hidden" name="action" value="save_exit_intent_popup_settings" />
           <?php
-          settings_fields('wp_exit_intent_popup_options');
-          do_settings_sections('wp_exit_intent_popup');
+          wp_nonce_field('exit_intent_popup_save', 'exit_intent_popup_nonce');
           ?>
           <table class="form-table">
               <tr valign="top">
@@ -43,44 +43,21 @@ function wp_exit_intent_popup_settings_page() {
   <?php
 }
 
-add_action('admin_init', 'wp_exit_intent_popup_settings');
-
-function wp_exit_intent_popup_settings() {
-    register_setting('wp_exit_intent_popup_options', 'exit_popup_image_url');
-
-    add_settings_section(
-        'wp_exit_intent_popup_main_section',
-        'Main Settings',
-        null,
-        'wp-exit-intent-popup'
-    );
-
-    add_settings_field(
-        'wp_exit_intent_popup_image',
-        'Popup Image',
-        'wp_exit_intent_popup_image_callback',
-        'wp-exit-intent-popup',
-        'wp_exit_intent_popup_main_section'
-    );
-}
-
-// Callback function to render the image upload field
-function wp_exit_intent_popup_image_callback() {
-    $image_url = get_option('exit_popup_image_url');
-    echo '<input type="file" name="exit_popup_image" />';
-    if ($image_url) {
-        echo '<br><img src="' . esc_url($image_url) . '" style="max-width:200px;" />';
-    }
-}
-
-// Handle the file upload and update the option
+// Handle form submission and file upload
 add_action('admin_post_save_exit_intent_popup_settings', 'wp_exit_intent_popup_handle_upload');
 
 function wp_exit_intent_popup_handle_upload() {
+    // Check user capabilities
     if (!current_user_can('manage_options')) {
         return;
     }
 
+    // Verify nonce
+    if (!isset($_POST['exit_intent_popup_nonce']) || !wp_verify_nonce($_POST['exit_intent_popup_nonce'], 'exit_intent_popup_save')) {
+        return;
+    }
+
+    // Handle file upload
     if (isset($_FILES['exit_popup_image']) && !empty($_FILES['exit_popup_image']['tmp_name'])) {
         $uploaded_file = $_FILES['exit_popup_image'];
         $upload = wp_handle_upload($uploaded_file, array('test_form' => false));
@@ -91,13 +68,22 @@ function wp_exit_intent_popup_handle_upload() {
                 update_option('exit_popup_image_url', $uploaded_image_url);
             }
         } else {
-            // Handle the upload error
             error_log('File upload error: ' . $upload['error']);
         }
     }
 
+    // Redirect back to settings page
     wp_redirect(admin_url('options-general.php?page=wp-exit-intent-popup'));
     exit;
+}
+
+// Register and display settings field
+function wp_exit_intent_popup_image_callback() {
+    $image_url = get_option('exit_popup_image_url');
+    echo '<input type="file" name="exit_popup_image" />';
+    if ($image_url) {
+        echo '<br><img src="' . esc_url($image_url) . '" style="max-width:200px;" />';
+    }
 }
 
 add_action('wp_enqueue_scripts', 'wp_exit_intent_popup_enqueue_scripts');
@@ -116,17 +102,30 @@ add_action('wp_head', 'wp_exit_intent_popup_css');
 function wp_exit_intent_popup_css() {
     echo '<style>
             #exit-intent-popup {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7); /* Grayed background */
                 display: none;
-                background: rgba(0, 0, 0, 0.7);
-                width: 300px;
-                height: 300px;
-                text-align: center;
-                padding: 20px;
-                color: #fff;
+                justify-content: center;
+                align-items: center;
+                z-index: 999999;
             }
             #exit-intent-popup img {
-                max-width: 100%;
-                height: auto;
+                max-height: 80%;
+                max-width: 80%;
             }
           </style>';
 }
+
+
+function wp_exit_intent_popup_html() {
+    $image_url = get_option('exit_popup_image_url');
+    echo '
+    <div id="exit-intent-popup"><img src="'. $image_url .'"></div>';
+}
+
+
+add_action('wp_footer','wp_exit_intent_popup_html');
